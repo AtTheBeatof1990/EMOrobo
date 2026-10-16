@@ -264,6 +264,23 @@ class SoundEffects:
                 if result.returncode != 0:
                     log.debug("aplay exited with status %s", result.returncode)
                 return result.returncode == 0
+            try:
+                import winsound
+                winsound.PlaySound(path, winsound.SND_FILENAME)
+                return True
+            except Exception:
+                pass
+            try:
+                import pygame.mixer
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                sound = pygame.mixer.Sound(path)
+                sound.play()
+                while pygame.mixer.get_busy():
+                    time.sleep(0.05)
+                return True
+            except Exception:
+                pass
             return False
         except Exception as exc:
             log.debug("Effect playback failed: %s", exc)

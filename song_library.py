@@ -35,8 +35,19 @@ class SongLibrary:
         if command is None and shutil.which("cvlc"):
             command = [shutil.which("cvlc"), "--play-and-exit", "--quiet", str(target)]
         if command is None:
-            log.warning("No MP3-capable player found; install mpg123 or ffmpeg.")
-            return False
+            try:
+                import pygame.mixer
+                import time
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                pygame.mixer.music.load(str(target))
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
+                return True
+            except Exception as exc:
+                log.warning("pygame.mixer playback failed for %s: %s", target.name, exc)
+                return False
         try:
             subprocess.run(command, check=True, timeout=180)
             return True

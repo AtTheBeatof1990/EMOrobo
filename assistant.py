@@ -176,7 +176,7 @@ class EMOAssistant:
                         )
                     else:
                         self.face.set_state("thinking")
-                        self.status.set_stage("Thinking", "Sending the question to the local Ollama model")
+                        self.status.set_stage("Thinking", "Generating response with local language model")
                         try:
                             response_en = self.llm.complete(english_text, response_language="en", history=self._history)
                             if language == "en":
@@ -192,7 +192,7 @@ class EMOAssistant:
                         except Exception as exc:
                             log.warning("LLM fallback failed: %s", exc)
                             response = self._localized(
-                                "I could not reach Ollama. Make sure its local service is running and the selected OLLAMA_MODEL is downloaded.",
+                                "I could not generate an answer from the local model. Please verify that the model is loaded and ready.",
                                 language,
                             )
             except Exception as exc:

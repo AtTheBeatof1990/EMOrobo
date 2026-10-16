@@ -27,7 +27,7 @@ class RobotStatus:
             "Local cache": {"status": "pending", "detail": "Preparing SQLite cache"},
             "Microphone": {"status": "pending", "detail": "Waiting for audio device check"},
             "Whisper": {"status": "pending", "detail": "Model loads on first utterance"},
-            "Ollama": {"status": "pending", "detail": "Checking Ollama model server"},
+            "LLM": {"status": "pending", "detail": "Checking local LLM engine (llama.cpp)"},
             "Wake word": {"status": "pending", "detail": "Waiting for lightweight wake-word engine"},
             "IMU": {"status": "pending", "detail": "Checking MPU6050 sensors"},
             "Remote controller": {"status": "pending", "detail": "Waiting for remote-control token"},

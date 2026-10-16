@@ -104,8 +104,12 @@ class Config:
     wake_words: tuple[str, ...]
     wake_timeout_seconds: int
     vosk_model_path: Path
-    ollama_host: str
-    ollama_model: str
+    llm_backend: str
+    llama_cpp_bin: Path
+    llama_cpp_cli_bin: Path
+    llama_cpp_model: Path
+    llama_cpp_host: str
+    llama_cpp_threads: int
     weather_city: str
     time_zone: str
     cache_enabled: bool
@@ -192,8 +196,21 @@ class Config:
             vosk_model_path=_project_path(os.getenv(
                 "VOSK_MODEL_PATH", str(Path.home() / ".cache" / "emo" / "vosk-model-small-en-us-0.15")
             )),
-            ollama_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/"),
-            ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b").strip() or "qwen2.5:0.5b",
+            llm_backend=os.getenv("LLM_BACKEND", "llama.cpp").strip().lower(),
+            llama_cpp_bin=_project_path(os.getenv(
+                "LLAMA_CPP_BIN",
+                str(BASE_DIR / "bin" / "llama" / ("llama-server.exe" if os.name == "nt" else "llama-server")),
+            )),
+            llama_cpp_cli_bin=_project_path(os.getenv(
+                "LLAMA_CPP_CLI_BIN",
+                str(BASE_DIR / "bin" / "llama" / ("llama-cli.exe" if os.name == "nt" else "llama-cli")),
+            )),
+            llama_cpp_model=_project_path(os.getenv(
+                "LLAMA_CPP_MODEL",
+                str(data_dir / "models" / "qwen2.5-0.5b-instruct-q4_k_m.gguf"),
+            )),
+            llama_cpp_host=os.getenv("LLAMA_CPP_HOST", "http://127.0.0.1:8080").rstrip("/"),
+            llama_cpp_threads=_bounded_int("LLAMA_CPP_THREADS", 4, 1, 32),
             weather_city=os.getenv("WEATHER_CITY", "").strip(),
             time_zone=os.getenv("TIMEZONE", "Asia/Kolkata").strip() or "Asia/Kolkata",
             cache_enabled=_bool("CACHE_ENABLED", True),

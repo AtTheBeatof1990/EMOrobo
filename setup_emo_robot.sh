@@ -34,19 +34,8 @@ mkdir -p data assets/songs
 if [[ ! -f .env ]]; then cp .env.example .env; fi
 chmod 600 .env
 
-echo "[5/8] Installing/starting Ollama and downloading the configured model..."
-if ! command -v ollama >/dev/null 2>&1; then
-  curl -fsSL https://ollama.com/install.sh | sh
-fi
-if ! command -v ollama >/dev/null 2>&1; then
-  echo "Ollama is not available; install it manually and re-run setup." >&2
-  exit 1
-fi
-if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files ollama.service >/dev/null 2>&1; then
-  sudo systemctl enable --now ollama || true
-fi
-MODEL="$(.venv/bin/python -c 'from config import Config; print(Config.from_env().ollama_model)')"
-ollama pull "$MODEL"
+echo "[5/8] Downloading AI models via model_manager.py..."
+.venv/bin/python "$ROOT_DIR/model_manager.py"
 
 echo "[6/8] Installing/pre-downloading English-only Whisper tiny.en..."
 bash "$ROOT_DIR/setup_english_whisper.sh"

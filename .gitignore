@@ -24,7 +24,11 @@ emo_pygame_backup.py
 data/*.sqlite3*
 data/*.wav
 data/.incoming*
+data/models/
+bin/
+*.gguf
+*.zip
 
 # Editor swap files
 *.swp
-.*.swp
+*.swp

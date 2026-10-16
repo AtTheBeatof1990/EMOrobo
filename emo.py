@@ -13,7 +13,8 @@ from config import Config
 from hardware import HardwareController, ThermalMonitor
 from imu import MPU6050Array
 from motion_engine import MOTIONS, MotionEngine
-from ollama_client import OllamaClient
+from llama_client import LlamaCppClient
+from model_manager import ensure_all_models
 from pygame_face import PygameFace
 from remote_controller import RemoteController
 from song_library import SongLibrary
@@ -55,6 +56,7 @@ class EMOApplication:
         self.face = PygameFace(
             self.status, self.config.display_width, self.config.display_height,
             self.config.display_fullscreen, self.config.display_driver,
+            on_action=self.touch_event.set,
         )
         self.translator = OfflineTranslator()
         self.recorder = AudioRecorder(
@@ -75,7 +77,13 @@ class EMOApplication:
             self.config.vosk_model_path, self.config.wake_words,
             self.config.sample_rate, self.config.audio_input_device,
         )
-        self.llm = OllamaClient(self.config.ollama_host, self.config.ollama_model)
+        self.llm = LlamaCppClient(
+            model_path=self.config.llama_cpp_model,
+            server_bin=self.config.llama_cpp_bin,
+            cli_bin=self.config.llama_cpp_cli_bin,
+            host=self.config.llama_cpp_host,
+            threads=self.config.llama_cpp_threads,
+        )
         self.speech = SpeechEngine(
             self.config.tts_engine, status=self.status,
             exaggeration=self.config.chatterbox_exaggeration,
@@ -109,7 +117,11 @@ class EMOApplication:
     def boot(self) -> None:
         self.face.start()
         self.status.set_boot_step("Configuration", "ok", "Loaded .env; Pygame display active")
-        self.status.set_stage("Boot sequence", "Starting wake-word, voice, Ollama, sensors, and controls")
+        self.status.set_stage("Boot sequence", "Verifying models and starting local engines")
+        try:
+            ensure_all_models(self.config, status=self.status)
+        except Exception as exc:
+            log.warning("Automatic model check/download warning: %s", exc)
         try:
             from response_cache import ResponseCache
             cache = ResponseCache(self.config.cache_db, enabled=self.config.cache_enabled)
@@ -122,9 +134,16 @@ class EMOApplication:
         wake_ok, wake_detail = self.wake.check()
         self.status.set_boot_step("Wake word", "ok" if wake_ok else "warning", wake_detail)
         whisper_ok, whisper_detail = self.recognizer.dependency_check()
+        if whisper_ok and self.config.preload_whisper:
+            try:
+                self.recognizer.preload()
+                whisper_detail = f"Preloaded {self.config.whisper_model} (CPU int8)"
+            except Exception as exc:
+                whisper_ok = False
+                whisper_detail = f"Preload failed: {exc}"
         self.status.set_boot_step("Whisper", "ok" if whisper_ok else "warning", whisper_detail)
         llm_ok, llm_detail = self.llm.check()
-        self.status.set_boot_step("Ollama", "ok" if llm_ok else "warning", llm_detail)
+        self.status.set_boot_step("LLM", "ok" if llm_ok else "warning", llm_detail)
         tts_ok, tts_detail = self.speech.check()
         self.status.set_boot_step("Speech output", "ok" if tts_ok else "warning", tts_detail)
         hw_ok, hw_detail = self.hardware.start()
@@ -219,7 +238,7 @@ class EMOApplication:
         if normalized in {"sing", "sing a song", "play a song", "play my song"} and self.songs.play_random():
             self.assistant._speak("Here is one of my songs.", "en", expression="dance")
             return
-        self.status.set_stage("Processing request", "Running local instructions or Ollama chat")
+        self.status.set_stage("Processing request", "Running local instructions or LLM chat")
         self.assistant.process(
             text, result.language or "en", result.english_text or text,
             result.translation_method or "faster-whisper",
@@ -287,6 +306,9 @@ class EMOApplication:
         except Exception: pass
         try: self.assistant.close()
         except Exception: pass
+        if hasattr(self, "llm") and hasattr(self.llm, "close"):
+            try: self.llm.close()
+            except Exception: pass
         try: self.hardware.close()
         except Exception: pass
         try: self.face.close()

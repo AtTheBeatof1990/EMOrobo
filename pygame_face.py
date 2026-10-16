@@ -15,12 +15,13 @@ class PygameFace:
     """Port of the supplied 320x240 eye animation. Pygame is imported lazily."""
 
     def __init__(self, status=None, width: int = 320, height: int = 240,
-                 fullscreen: bool = True, driver: str = "auto") -> None:
+                 fullscreen: bool = True, driver: str = "auto", on_action=None) -> None:
         self.status = status
         self.width = int(width)
         self.height = int(height)
         self.fullscreen = bool(fullscreen)
         self.driver = (driver or "auto").strip().lower()
+        self.on_action = on_action
         self.surface = None
         self._pygame = None
         self._clock = None
@@ -70,7 +71,7 @@ class PygameFace:
         self.surface = pygame.display.set_mode((self.width, self.height), flags)
         self.width, self.height = self.surface.get_size()
         pygame.display.set_caption("EMO")
-        pygame.mouse.set_visible(False)
+        pygame.mouse.set_visible(not self.fullscreen)
         self._clock = pygame.time.Clock()
         self._closed = False
 
@@ -109,8 +110,13 @@ class PygameFace:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
-            if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
-                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_ESCAPE, pygame.K_q):
+                    return False
+                if event.key in (pygame.K_SPACE, pygame.K_RETURN) and self.on_action:
+                    self.on_action()
+            elif event.type == pygame.MOUSEBUTTONDOWN and self.on_action:
+                self.on_action()
 
         now = time.monotonic() * 1000
         if now - self._last_frame_ms >= 1000 / 60:

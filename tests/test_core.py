@@ -536,6 +536,20 @@ class SpeechOutputTests(unittest.TestCase):
         with patch("audio_io.subprocess.run", return_value=self.Result(1)):
             self.assertFalse(effect._play_samples([0, 10]))
 
+    def test_pyttsx3_engine_selection_and_fallback(self):
+        engine = SpeechEngine("pyttsx3")
+        with patch.object(SpeechEngine, "_pyttsx3_available", return_value=True):
+            available, msg = engine.check()
+            self.assertTrue(available)
+            self.assertIn("pyttsx3", msg)
+
+    def test_pyttsx3_speak_calls_engine(self):
+        engine = SpeechEngine("pyttsx3")
+        with patch.object(engine, "_speak_pyttsx3", return_value=True) as mock_speak:
+            self.assertTrue(engine.speak("hello world", "en"))
+            mock_speak.assert_called_once_with("hello world", "en")
+            self.assertEqual(engine.last_engine, "pyttsx3")
+
 
 class LocalFeatureHubTests(unittest.TestCase):
     def setUp(self):
@@ -586,6 +600,67 @@ class LocalFeatureHubTests(unittest.TestCase):
         self.assertEqual(self.hub.handle("what date is it")[0], "current_date")
         self.assertEqual(self.hub.handle("python version")[0], "python_version")
         self.assertEqual(self.hub.handle("next weekday monday")[0], "next_weekday")
+
+
+class LlamaCppClientTests(unittest.TestCase):
+    def test_check_reports_missing_model(self):
+        from llama_client import LlamaCppClient
+        client = LlamaCppClient(
+            model_path=Path("non_existent_model.gguf"),
+            auto_start=False,
+        )
+        ok, detail = client.check()
+        self.assertFalse(ok)
+        self.assertIn("Model file missing", detail)
+
+    def test_server_response_parsing(self):
+        from llama_client import LlamaCppClient
+        client = LlamaCppClient(
+            model_path=Path("fake_model.gguf"),
+            auto_start=False,
+        )
+        fake_response = json.dumps({
+            "choices": [{"message": {"content": "Hello, I am EMO!"}}]
+        }).encode("utf-8")
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def read(self):
+                return fake_response
+
+        with patch("urllib.request.urlopen", return_value=FakeResponse()):
+            result = client._complete_via_server([{"role": "user", "content": "hi"}])
+            self.assertEqual(result, "Hello, I am EMO!")
+
+    def test_complete_includes_system_prompt_and_history(self):
+        from llama_client import LlamaCppClient
+        client = LlamaCppClient(
+            model_path=Path("fake_model.gguf"),
+            auto_start=False,
+        )
+        client.is_server_alive = lambda timeout=1.0: True
+        captured_messages = []
+
+        def fake_complete(messages, **kwargs):
+            captured_messages.extend(messages)
+            return "Test response"
+
+        client._complete_via_server = fake_complete
+        history = [
+            {"role": "user", "content": "Who made you?"},
+            {"role": "assistant", "content": "I am EMO."},
+        ]
+        resp = client.complete("What can you do?", history=history)
+        self.assertEqual(resp, "Test response")
+        self.assertEqual(len(captured_messages), 4)
+        self.assertEqual(captured_messages[0]["role"], "system")
+        self.assertEqual(captured_messages[1]["role"], "user")
+        self.assertEqual(captured_messages[2]["role"], "assistant")
+        self.assertEqual(captured_messages[3]["role"], "user")
+        self.assertEqual(captured_messages[3]["content"], "What can you do?")
 
 
 if __name__ == "__main__":

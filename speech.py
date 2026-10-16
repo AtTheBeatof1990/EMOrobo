@@ -14,6 +14,37 @@ from translation import OfflineTranslator
 
 log = logging.getLogger(__name__)
 
+try:
+    import av
+    _orig_av_open = av.open
+    def _safe_av_open(*args, **kwargs):
+        kwargs.pop("metadata_errors", None)
+        return _orig_av_open(*args, **kwargs)
+    av.open = _safe_av_open
+except Exception:
+    pass
+
+
+def _read_wav_to_float32(audio_path: str | Path):
+    try:
+        import numpy as np
+        import wave
+        with wave.open(str(audio_path), "rb") as wf:
+            frames = wf.readframes(wf.getnframes())
+            sampwidth = wf.getsampwidth()
+            n_channels = wf.getnchannels()
+            if sampwidth == 2:
+                data = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+            elif sampwidth == 4:
+                data = np.frombuffer(frames, dtype="<i4").astype(np.float32) / 2147483648.0
+            else:
+                data = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+            if n_channels > 1:
+                data = data.reshape(-1, n_channels).mean(axis=1)
+            return data
+    except Exception:
+        return None
+
 
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     try:
@@ -192,12 +223,21 @@ class WhisperRecognizer:
                 self.status.set_boot_step("Whisper", "running", f"Loading Faster-Whisper {name}")
             self._faster_model = None
             self._faster_loaded_name = ""
-            self._faster_model = WhisperModel(
-                name,
-                device="cpu",
-                compute_type="int8",
-                download_root=str(self.download_root),
-            )
+            try:
+                self._faster_model = WhisperModel(
+                    name,
+                    device="cpu",
+                    compute_type="int8",
+                    download_root=str(self.download_root),
+                    local_files_only=True,
+                )
+            except Exception:
+                self._faster_model = WhisperModel(
+                    name,
+                    device="cpu",
+                    compute_type="int8",
+                    download_root=str(self.download_root),
+                )
             self._faster_loaded_name = name
             if self.status is not None:
                 self.status.set_boot_step("Whisper", "ok", f"Faster-Whisper {name} ready (CPU int8)")
@@ -275,14 +315,16 @@ class WhisperRecognizer:
             beam_size = _bounded_env_int("WHISPER_BEAM_SIZE", 1, 1, 5)
             vad_filter = os.getenv("WHISPER_VAD_FILTER", "false").strip().lower() in {"1", "true", "yes", "on"}
             no_speech_threshold = _bounded_env_float("WHISPER_NO_SPEECH_THRESHOLD", 0.6, 0.0, 1.0)
+            audio_data = _read_wav_to_float32(audio_path)
+            target_audio = audio_data if audio_data is not None else str(audio_path)
             try:
                 segments, _info = model.transcribe(
-                    str(audio_path), task="transcribe", language="en", beam_size=beam_size,
+                    target_audio, task="transcribe", language="en", beam_size=beam_size,
                     condition_on_previous_text=False, vad_filter=vad_filter,
                     no_speech_threshold=no_speech_threshold,
                 )
             except TypeError:
-                segments, _info = model.transcribe(str(audio_path), language="en", beam_size=beam_size)
+                segments, _info = model.transcribe(target_audio, language="en", beam_size=beam_size)
             raw_text = "".join(segment.text for segment in segments).strip()
             # The tiny.en model and fixed language argument intentionally make this English-only.
             language = "en"

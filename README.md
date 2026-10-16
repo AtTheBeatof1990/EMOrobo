@@ -1,28 +1,39 @@
-# EMO — Pygame-first Raspberry Pi robot
+# EMO — Local Desktop & Raspberry Pi robot
 
-EMO is a local robot assistant for Raspberry Pi OS with a Pygame-only blue-eye display, Ollama chat, Vosk wake-word detection, English-only Faster-Whisper transcription, configurable Chatterbox speech, four servo channels, two MPU6050 sensors, capacitive touch, MP3 playback, optional camera AI, and a protected Flask remote controller.
+EMO is a local robot assistant for Windows and Raspberry Pi OS with a Pygame-only blue-eye display, llama.cpp chat (Qwen 2.5 0.5B GGUF), Vosk wake-word detection, English-only Faster-Whisper transcription, configurable Chatterbox speech, four servo channels, two MPU6050 sensors, capacitive touch, MP3 playback, optional camera AI, and a protected Flask remote controller.
 
 The code is integrated, but **hardware/model runtime checks must still be completed on the actual Pi and exact display panel**. An arbitrary set of SPI pins does not identify the LCD controller or automatically configure its kernel driver.
 
 ## Boot flow
 
 1. Pygame starts locally and renders only two solid-blue rounded rectangular eyes. The supplied animation style includes blinks, smooth look-around, listening bob, and talking squish. No HTML is used for the face.
-2. EMO checks microphone, wake model, Whisper package, Ollama, speech, GPIO, MPU6050, remote, and optional vision setup.
-3. When core boot checks finish, EMO plays \`assets/songs/emo_is_ready.mp3\` if supplied; otherwise it speaks **“EMO is ready.”**
+2. EMO checks microphone, wake model, Whisper package, llama.cpp LLM, speech, GPIO, MPU6050, remote, and optional vision setup.
+3. When core boot checks finish, EMO plays `assets/songs/emo_is_ready.mp3` if supplied; otherwise it speaks **“EMO is ready.”**
 4. A small Vosk listener waits for the wake word **“EMO”** (touch also wakes it). Only after wake does the app record a request and initialize/use Whisper. It returns to standby after each response.
 
-Vosk is the low-cost wake-word engine; Whisper is the speech-to-text engine. The configured \`tiny.en\` model is English-only.
+Vosk is the low-cost wake-word engine; Whisper is the speech-to-text engine. The configured `tiny.en` model is English-only.
 
 ## Install
 
+### Windows
+Run the PowerShell setup script:
+```powershell
+.\setup_windows.ps1
+```
+And start EMO:
+```powershell
+.\run_windows.ps1
+```
+
+### Raspberry Pi / Linux
 On Raspberry Pi OS, use a 64-bit OS for the Faster-Whisper route. In a terminal:
 
-\`\`\`bash
+```bash
 cd ~/emo
 bash install_pi.sh
-\`\`\`
+```
 
-Setup installs the runtime dependencies, installs/starts Ollama, pulls \`qwen2.5:0.5b\`, downloads English \`tiny.en\`, downloads the small Vosk wake model, and creates a private \`REMOTE_CONTROL_TOKEN\` in the local \`.env\`. The setup requires internet and can take a while. Review the scripts before running them if you prefer manual installation.
+Setup installs the runtime dependencies, downloads the Qwen 2.5 0.5B GGUF model for llama.cpp, downloads English `tiny.en`, downloads the small Vosk wake model, and creates a private `REMOTE_CONTROL_TOKEN` in the local `.env`. The setup requires internet and can take a while. Review the scripts before running them if you prefer manual installation.
 
 Start EMO:
 
@@ -128,6 +139,6 @@ python -m compileall -q .
 python -m unittest discover -s tests -v
 \`\`\`
 
-Unit tests use stubs for model/network features where possible. Passing them does not prove that the actual GPIOs, camera, SPI controller, speaker, downloaded models, or Ollama will work on your device; hardware-in-the-loop validation is still needed.
+Unit tests use stubs for model/network features where possible. Passing them does not prove that the actual GPIOs, camera, SPI controller, speaker, downloaded models, or llama.cpp will work on your device; hardware-in-the-loop validation is still needed.
 
 This project prioritizes real modules, tests, and explainable setup over padding the source tree to hit an arbitrary line count.
