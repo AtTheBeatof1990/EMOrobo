@@ -45,44 +45,60 @@ python emo.py
 
 If Faster-Whisper/CTranslate2 cannot install or load on your particular ARM image, the install will stop rather than pretend it succeeded. A low-memory fallback is Whisper.cpp using an English model (\`ggml-tiny.en.bin\`): install/build Whisper.cpp, set \`WHISPER_BACKEND=cpp\` and \`WHISPER_CPP_MODEL\` in \`.env\`. The existing helper downloads multilingual tiny by default, so select/download the English \`tiny.en\` weights when English-only recognition is required.
 
-## Hardware pinout
+## Hardware pinout & wiring
 
-Configured values use **BCM GPIO numbers**, not header pin numbers.
+Physical Pins 1–26 are occupied by the **3.5-inch GPIO Display** black header (using SPI GPIO 7, 8, 9, 10, 11, and control pins 17, 24, 25).
+The remaining **Exposed Physical Pins 27–40** on the Raspberry Pi 40-pin header are assigned to all robot servos and sensors:
 
-| Device/channel | BCM GPIO | Physical pin | Notes |
-|---|---:|---:|---|
-| Servo 1 — head yaw | 5 | 29 | First servo output |
-| Servo 2 — head pitch | 6 | 31 | Second servo output |
-| Servo 3 — left arm | 12 | 32 | Third servo output |
-| Servo 4 — right arm | 13 | 33 | Fourth servo output |
-| Capacitive touch | 16 | 36 | Driver expects HIGH when touched |
-| MPU6050 SDA | 2 | 3 | I2C SDA |
-| MPU6050 SCL | 3 | 5 | I2C SCL |
-| MPU6050 #1 address | — | — | \`0x68\` (AD0 low) |
-| MPU6050 #2 address | — | — | \`0x69\` (AD0 high) |
+### Exposed Header Pins (Physical Pins 27–40)
 
-The setup script enables the Raspberry Pi I2C and SPI interfaces through `raspi-config` when that command is available; reboot after install if the OS requests it. The two MPU6050 boards must have distinct addresses. The software polls each responding sensor and publishes the latest acceleration/gyro readings to remote status.
+| Physical Pin | BCM GPIO | Device / Signal | Wire / Function |
+|:---:|:---:|---|---|
+| **Pin 27** | GPIO 0 | ID_SD | Reserved / Unused |
+| **Pin 28** | GPIO 1 | ID_SC | Reserved / Unused |
+| **Pin 29** | GPIO 5 | Servo 1 — Head Yaw | PWM Signal Out |
+| **Pin 30** | **GND** | **Servo Ground** | Common ground to servo power supply |
+| **Pin 31** | GPIO 6 | Servo 2 — Head Pitch | PWM Signal Out |
+| **Pin 32** | GPIO 12 | Servo 3 — Left Arm | PWM Signal Out |
+| **Pin 33** | GPIO 13 | Servo 4 — Right Arm | PWM Signal Out |
+| **Pin 34** | **GND** | **Touch Ground** | Capacitive Touch GND |
+| **Pin 35** | GPIO 19 | Touch 3.3V Power Out | Configured as Output **HIGH** (3.3V) |
+| **Pin 36** | GPIO 16 | Touch Signal In | Active HIGH touch sensor input |
+| **Pin 37** | GPIO 26 | MPU 3.3V Power + MPU#2 AD0 | Configured as Output **HIGH** (3.3V) |
+| **Pin 38** | GPIO 20 | Software I2C SDA | Connected to both MPU6050 SDA pins |
+| **Pin 39** | **GND** | **MPU Ground** | Dual MPU6050 GND |
+| **Pin 40** | GPIO 21 | Software I2C SCL | Connected to both MPU6050 SCL pins |
 
-**Servo power warning:** use an appropriately rated external regulated servo supply and connect its ground to Raspberry Pi ground. Never power four servos from the Pi's 3.3 V pin or GPIO header. Start with servo horns disconnected, centered, and mechanically unloaded while confirming directions, pulse width, neutral angles, and safe movement limits.
+### 3.5-Inch SPI Display Header (Physical Pins 1–26)
 
-### SPI display signals supplied
+| Physical Pin | BCM GPIO | Signal / Role |
+|:---:|:---:|---|
+| **Pins 1, 17** | 3.3V Power | Display logic power |
+| **Pins 2, 4** | 5V Power | Display backlight power |
+| **Pins 6, 9, 14, 20, 25** | GND | Display grounds |
+| **Pin 11** | GPIO 17 | Display control / TP_IRQ |
+| **Pin 18** | GPIO 24 | Display control / LCD_RS (D/C) |
+| **Pin 19** | GPIO 10 | SPI MOSI |
+| **Pin 21** | GPIO 9 | SPI MISO |
+| **Pin 22** | GPIO 25 | Display control / LCD_RST |
+| **Pin 23** | GPIO 11 | SPI SCLK |
+| **Pin 24** | GPIO 8 | SPI CE0 / LCD_CS |
+| **Pin 26** | GPIO 7 | SPI CE1 / TP_CS |
 
-| Signal (assumed) | BCM GPIO | Physical pin |
-|---|---:|---:|
-| SPI CE1 / select | 7 | 26 |
-| SPI CE0 / select | 8 | 24 |
-| SPI MISO | 9 | 21 |
-| SPI MOSI | 10 | 19 |
-| SPI SCLK | 11 | 23 |
-| Additional display control | 17 | 11 |
-| Additional display control | 24 | 18 |
-| Additional display control | 25 | 22 |
+### Dual MPU6050 Setup & Software I2C
+Because the display covers the hardware I2C pins (Pins 3 & 5), EMO uses **Software I2C** on GPIO 20 (SDA) and GPIO 21 (SCL):
+- **Software I2C Overlay**: Enable via `/boot/firmware/config.txt` (or `/boot/config.txt`):
+  ```ini
+  dtoverlay=i2c-gpio,bus=3,i2c_gpio_sda=20,i2c_gpio_scl=21
+  ```
+  *(Configured automatically during `bash setup_emo_robot.sh`)*.
+- **Sensor #1 (`0x68`)**: AD0 connected to GND (or left floating).
+- **Sensor #2 (`0x69`)**: AD0 connected to Pin 37 (GPIO 26), which EMO pulls HIGH along with VCC.
+- **Auto Bus Detection**: `I2C_BUS=auto` in `.env` automatically probes bus 3 and candidate buses to locate both sensors.
 
-GPIO 17/24/25 are labelled additional control signals because their exact roles (often reset, data/command, backlight, or similar) depend on your LCD board. The LCD controller/model is not specified, so a matching Raspberry Pi kernel overlay/driver must be configured separately. Pygame needs an available framebuffer or SDL/KMS display.
-
-For a panel whose driver exposes \`/dev/fb1\`, test:
-
-\`\`\`bash
+### Power Guidelines
+- **GPIO Power Rails**: Pin 35 (GPIO 19) powers the capacitive touch sensor, and Pin 37 (GPIO 26) powers the two MPU6050 sensors. EMO automatically initializes these pins as outputs driven HIGH at startup.
+- **Servo Power**: Always power the 4 servos from an **external regulated 5V power supply (2A–3A)** with common ground tied to Raspberry Pi Pin 30 (GND). Do NOT power servos directly from GPIO pins.
 SDL_VIDEODRIVER=fbcon SDL_FBDEV=/dev/fb1 python emo.py
 \`\`\`
 

@@ -18,10 +18,15 @@ class MPU6050Array:
     PWR_MGMT_1 = 0x6B
     DATA_START = 0x3B
 
-    def __init__(self, addresses=(0x68, 0x69), status=None, interval: float = 0.10) -> None:
+    def __init__(self, addresses=(0x68, 0x69), status=None, interval: float = 0.10,
+                 bus_id: int | str = "auto", sda_gpio: int = 20, scl_gpio: int = 21) -> None:
         self.addresses = tuple(int(address) for address in addresses)
         self.status = status
         self.interval = max(0.05, float(interval))
+        self.bus_id = str(bus_id).strip().lower() if bus_id is not None else "auto"
+        self.sda_gpio = int(sda_gpio)
+        self.scl_gpio = int(scl_gpio)
+        self.active_bus: int | None = None
         self._bus = None
         self._stop = threading.Event()
         self._thread = None
@@ -29,24 +34,62 @@ class MPU6050Array:
         self._latest: dict[str, Any] = {}
         self._enabled_addresses: list[int] = []
 
+    def _open_bus(self):
+        from smbus2 import SMBus
+        if self.bus_id not in {"auto", ""}:
+            try:
+                target_bus = int(self.bus_id)
+                return SMBus(target_bus), target_bus
+            except Exception as exc:
+                log.warning("Failed to open configured I2C bus %s: %s", self.bus_id, exc)
+
+        # Probing order: Software I2C (bus 3 on GPIO 20/21 via i2c-gpio) first, then hardware I2C (bus 1)
+        candidates = [3, 1, 0, 4]
+        for candidate in candidates:
+            try:
+                bus = SMBus(candidate)
+                # Test write to any configured address
+                for address in self.addresses:
+                    try:
+                        bus.write_byte_data(address, self.PWR_MGMT_1, 0x00)
+                        log.info("MPU6050 found on I2C bus %d at 0x%02X", candidate, address)
+                        return bus, candidate
+                    except OSError:
+                        pass
+                bus.close()
+            except Exception:
+                pass
+
+        # Fallback: attempt bus 3 (software I2C), then bus 1
+        for fallback_bus in [3, 1]:
+            try:
+                return SMBus(fallback_bus), fallback_bus
+            except Exception:
+                pass
+        return SMBus(1), 1
+
     def start(self) -> tuple[bool, str]:
         try:
             from smbus2 import SMBus
-            self._bus = SMBus(1)
+            self._bus, self.active_bus = self._open_bus()
             for address in self.addresses:
                 try:
                     self._bus.write_byte_data(address, self.PWR_MGMT_1, 0x00)
                     self._enabled_addresses.append(address)
                 except OSError as exc:
-                    log.warning("MPU6050 at 0x%02X is unavailable: %s", address, exc)
+                    log.warning("MPU6050 at 0x%02X is unavailable on I2C bus %s: %s", address, self.active_bus, exc)
             if not self._enabled_addresses:
                 self.stop()
-                return False, "No MPU6050 found; enable I2C and check AD0 addresses 0x68/0x69"
+                return False, (
+                    f"No MPU6050 found on I2C bus {self.active_bus}. Check Software I2C wiring: "
+                    f"SDA=GPIO {self.sda_gpio} (Pin 38), SCL=GPIO {self.scl_gpio} (Pin 40), "
+                    f"Power=GPIO 26 (Pin 37), and AD0 for 0x68/0x69."
+                )
             self._stop.clear()
             self._thread = threading.Thread(target=self._run, daemon=True, name="EMO-MPU6050")
             self._thread.start()
             addrs = ", ".join(f"0x{address:02X}" for address in self._enabled_addresses)
-            return True, f"MPU6050 active at {addrs}"
+            return True, f"MPU6050 active at {addrs} on I2C bus {self.active_bus} (Software I2C SDA={self.sda_gpio}, SCL={self.scl_gpio})"
         except Exception as exc:
             self.stop()
             return False, f"MPU6050 unavailable: {exc}"

@@ -26,8 +26,11 @@ class HardwareController:
     }
 
     def __init__(self, touch_gpio: int = 16, servo_gpios=(5, 6, 12, 13),
+                 touch_power_gpio: int = 19, mpu_power_gpio: int = 26,
                  status=None, on_touch=None) -> None:
         self.touch_gpio = int(touch_gpio)
+        self.touch_power_gpio = int(touch_power_gpio)
+        self.mpu_power_gpio = int(mpu_power_gpio)
         self.servo_gpios = tuple(int(pin) for pin in servo_gpios)
         if len(self.servo_gpios) != 4 or len(set(self.servo_gpios)) != 4:
             raise ValueError("SERVO_GPIOS must contain four distinct BCM GPIO numbers.")
@@ -37,19 +40,40 @@ class HardwareController:
         self.on_touch = on_touch
         self.button = None
         self.servos = []
+        self._touch_pwr = None
+        self._mpu_pwr = None
         self._lock = threading.RLock()
 
     def start(self) -> tuple[bool, str]:
         enabled, errors = [], []
         try:
-            from gpiozero import AngularServo, Button
+            from gpiozero import AngularServo, Button, OutputDevice
         except Exception as exc:
             return False, f"gpiozero unavailable; hardware is disabled: {exc}"
         try:
+            # 3.3V Power rail for capacitive touch sensor (Pin 35, GPIO 19)
+            if self.touch_power_gpio:
+                try:
+                    self._touch_pwr = OutputDevice(self.touch_power_gpio, active_high=True, initial_value=True)
+                    enabled.append(f"touch 3.3V pwr BCM GPIO {self.touch_power_gpio} (Pin 35)")
+                except Exception as exc:
+                    errors.append(f"touch power GPIO {self.touch_power_gpio} failed: {exc}")
+
+            # 3.3V Power rail for dual MPU6050 + MPU#2 AD0 High (Pin 37, GPIO 26)
+            if self.mpu_power_gpio:
+                try:
+                    self._mpu_pwr = OutputDevice(self.mpu_power_gpio, active_high=True, initial_value=True)
+                    enabled.append(f"MPU 3.3V pwr + AD0 BCM GPIO {self.mpu_power_gpio} (Pin 37)")
+                except Exception as exc:
+                    errors.append(f"MPU power GPIO {self.mpu_power_gpio} failed: {exc}")
+
+            # Capacitive touch signal (Pin 36, GPIO 16)
             if self.touch_gpio:
                 self.button = Button(self.touch_gpio, pull_up=False, bounce_time=0.12)
                 self.button.when_pressed = self._touch_pressed
-                enabled.append(f"touch BCM GPIO {self.touch_gpio}")
+                enabled.append(f"touch signal BCM GPIO {self.touch_gpio} (Pin 36)")
+
+            # Four servo channels (Pins 29, 31, 32, 33)
             for name, pin in zip(self.SERVO_NAMES, self.servo_gpios):
                 servo = AngularServo(pin, min_angle=-60, max_angle=60,
                     min_pulse_width=0.0005, max_pulse_width=0.0025, initial_angle=0)
@@ -88,12 +112,14 @@ class HardwareController:
 
     def close(self) -> None:
         with self._lock:
-            for device in [*self.servos, self.button]:
+            for device in [*self.servos, self.button, self._touch_pwr, self._mpu_pwr]:
                 if device is not None:
                     try: device.close()
                     except Exception: pass
             self.servos.clear()
             self.button = None
+            self._touch_pwr = None
+            self._mpu_pwr = None
 
 
 class ThermalMonitor:

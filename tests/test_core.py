@@ -59,7 +59,12 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(config.display_width, 320)
         self.assertEqual(config.wake_timeout_seconds, 20)
         self.assertEqual(config.touch_gpio, 16)
+        self.assertEqual(config.touch_power_gpio, 19)
         self.assertEqual(config.servo_gpios, (5, 6, 12, 13))
+        self.assertEqual(config.mpu_power_gpio, 26)
+        self.assertEqual(config.i2c_bus, "auto")
+        self.assertEqual(config.i2c_sda_gpio, 20)
+        self.assertEqual(config.i2c_scl_gpio, 21)
         self.assertEqual(
             (config.thermal_warning_c, config.thermal_lockout_c, config.thermal_resume_c),
             (75.0, 82.0, 72.0),
@@ -661,6 +666,43 @@ class LlamaCppClientTests(unittest.TestCase):
         self.assertEqual(captured_messages[2]["role"], "assistant")
         self.assertEqual(captured_messages[3]["role"], "user")
         self.assertEqual(captured_messages[3]["content"], "What can you do?")
+
+
+class HardwareWiringTests(unittest.TestCase):
+    def test_hardware_controller_attributes_and_defaults(self):
+        from hardware import HardwareController
+        hw = HardwareController(
+            touch_gpio=16,
+            servo_gpios=(5, 6, 12, 13),
+            touch_power_gpio=19,
+            mpu_power_gpio=26,
+        )
+        self.assertEqual(hw.touch_gpio, 16)
+        self.assertEqual(hw.touch_power_gpio, 19)
+        self.assertEqual(hw.mpu_power_gpio, 26)
+        self.assertEqual(hw.servo_gpios, (5, 6, 12, 13))
+        hw.close()
+
+    def test_hardware_controller_invalid_pins(self):
+        from hardware import HardwareController
+        with self.assertRaises(ValueError):
+            HardwareController(servo_gpios=(5, 5, 12, 13))
+        with self.assertRaises(ValueError):
+            HardwareController(servo_gpios=(5, 6, 12, 99))
+
+    def test_mpu6050_software_i2c_attributes(self):
+        from imu import MPU6050Array
+        imu = MPU6050Array(
+            addresses=(0x68, 0x69),
+            bus_id="auto",
+            sda_gpio=20,
+            scl_gpio=21,
+        )
+        self.assertEqual(imu.addresses, (0x68, 0x69))
+        self.assertEqual(imu.bus_id, "auto")
+        self.assertEqual(imu.sda_gpio, 20)
+        self.assertEqual(imu.scl_gpio, 21)
+        self.assertIsNone(imu.active_bus)
 
 
 if __name__ == "__main__":

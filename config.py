@@ -122,9 +122,14 @@ class Config:
     chatterbox_temperature: float
     chatterbox_ref_audio: Path | None
     touch_gpio: int
+    touch_power_gpio: int
     servo_gpios: tuple[int, int, int, int]
     mpu_addresses: tuple[int, ...]
     mpu_enabled: bool
+    mpu_power_gpio: int
+    i2c_bus: str
+    i2c_sda_gpio: int
+    i2c_scl_gpio: int
     remote_enabled: bool
     remote_host: str
     remote_port: int
@@ -223,9 +228,14 @@ class Config:
             chatterbox_temperature=_bounded_float("CHATTERBOX_TEMPERATURE", 0.8, 0.1, 2.0),
             chatterbox_ref_audio=_project_path(ref_audio) if ref_audio else None,
             touch_gpio=_bounded_int("TOUCH_GPIO", 16, 0, 27),
+            touch_power_gpio=_bounded_int("TOUCH_POWER_GPIO", 19, 0, 27),
             servo_gpios=servos,
             mpu_addresses=addresses,
             mpu_enabled=_bool("MPU6050_ENABLED", True),
+            mpu_power_gpio=_bounded_int("MPU_POWER_GPIO", 26, 0, 27),
+            i2c_bus=os.getenv("I2C_BUS", "auto").strip().lower() or "auto",
+            i2c_sda_gpio=_bounded_int("I2C_SDA_GPIO", 20, 0, 27),
+            i2c_scl_gpio=_bounded_int("I2C_SCL_GPIO", 21, 0, 27),
             remote_enabled=_bool("REMOTE_ENABLED", True),
             remote_host=os.getenv("REMOTE_HOST", "0.0.0.0").strip() or "0.0.0.0",
             remote_port=_bounded_int("REMOTE_PORT", 8766, 1024, 65535),

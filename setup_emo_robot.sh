@@ -16,12 +16,29 @@ case "$ARCH" in
   *) echo "Architecture: $ARCH. Faster-Whisper/CTranslate2 support may be limited." ;;
 esac
 
-echo "[2/7] Enabling Raspberry Pi I2C/SPI buses when raspi-config is available..."
+echo "[2/8] Enabling Raspberry Pi I2C/SPI and Software I2C on GPIO 20/21..."
 if command -v raspi-config >/dev/null 2>&1; then
   sudo raspi-config nonint do_i2c 0 || true
   sudo raspi-config nonint do_spi 0 || true
 else
   echo "raspi-config not found; enable I2C and SPI manually before using the sensors/display."
+fi
+
+BOOT_CONFIG=""
+if [[ -f /boot/firmware/config.txt ]]; then
+  BOOT_CONFIG="/boot/firmware/config.txt"
+elif [[ -f /boot/config.txt ]]; then
+  BOOT_CONFIG="/boot/config.txt"
+fi
+
+if [[ -n "$BOOT_CONFIG" ]]; then
+  if ! grep -q "i2c_gpio_sda=20" "$BOOT_CONFIG" 2>/dev/null; then
+    echo "Adding dtoverlay=i2c-gpio,bus=3,i2c_gpio_sda=20,i2c_gpio_scl=21 to $BOOT_CONFIG..."
+    echo "dtoverlay=i2c-gpio,bus=3,i2c_gpio_sda=20,i2c_gpio_scl=21" | sudo tee -a "$BOOT_CONFIG" >/dev/null || true
+  fi
+  if ! grep -q "dtparam=spi=on" "$BOOT_CONFIG" 2>/dev/null; then
+    echo "dtparam=spi=on" | sudo tee -a "$BOOT_CONFIG" >/dev/null || true
+  fi
 fi
 
 echo "[3/8] Creating virtual environment and installing core dependencies..."

@@ -93,10 +93,19 @@ class EMOApplication:
         )
         self.songs = SongLibrary(self.config.song_dir)
         self.hardware = HardwareController(
-            self.config.touch_gpio, self.config.servo_gpios, self.status,
+            self.config.touch_gpio, self.config.servo_gpios,
+            touch_power_gpio=self.config.touch_power_gpio,
+            mpu_power_gpio=self.config.mpu_power_gpio,
+            status=self.status,
             on_touch=self.touch_event.set,
         )
-        self.imu = MPU6050Array(self.config.mpu_addresses, status=self.status) if self.config.mpu_enabled else None
+        self.imu = MPU6050Array(
+            self.config.mpu_addresses,
+            status=self.status,
+            bus_id=self.config.i2c_bus,
+            sda_gpio=self.config.i2c_sda_gpio,
+            scl_gpio=self.config.i2c_scl_gpio,
+        ) if self.config.mpu_enabled else None
         self.thermal = ThermalMonitor(
             self.status, self.config.thermal_warning_c,
             self.config.thermal_lockout_c, self.config.thermal_resume_c,
